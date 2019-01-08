@@ -3,7 +3,9 @@ package com.reactnative.ivpusic.imagepicker;
 import android.Manifest;
 import android.app.Activity;
 import android.content.ClipData;
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -76,7 +78,6 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
     private boolean hideBottomControls = false;
     private boolean enableRotationGesture = false;
     private boolean disableCropperColorSetters = false;
-    private boolean useFrontCamera = false;
     private ReadableMap options;
 
     //Grey 800
@@ -133,7 +134,6 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
         hideBottomControls = options.hasKey("hideBottomControls") ? options.getBoolean("hideBottomControls") : false;
         enableRotationGesture = options.hasKey("enableRotationGesture") ? options.getBoolean("enableRotationGesture") : false;
         disableCropperColorSetters = options.hasKey("disableCropperColorSetters") ? options.getBoolean("disableCropperColorSetters") : false;
-        useFrontCamera = options.hasKey("useFrontCamera") ? options.getBoolean("useFrontCamera") : false;
         this.options = options;
     }
 
@@ -306,12 +306,6 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
             }
 
             cameraIntent.putExtra(MediaStore.EXTRA_OUTPUT, mCameraCaptureURI);
-
-            if (this.useFrontCamera) {
-                cameraIntent.putExtra("android.intent.extras.CAMERA_FACING", 1);
-                cameraIntent.putExtra("android.intent.extras.LENS_FACING_FRONT", 1);
-                cameraIntent.putExtra("android.intent.extra.USE_FRONT_CAMERA", true);
-            }
 
             if (cameraIntent.resolveActivity(activity.getPackageManager()) == null) {
                 resultCollector.notifyProblem(E_CANNOT_LAUNCH_CAMERA, "Cannot launch camera");
@@ -673,6 +667,7 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
     }
 
     private void cameraPickerResult(Activity activity, final int requestCode, final int resultCode, final Intent data) {
+        clearStoredPath();
         if (resultCode == Activity.RESULT_CANCELED) {
             resultCollector.notifyProblem(E_PICKER_CANCELLED_KEY, E_PICKER_CANCELLED_MSG);
         } else if (resultCode == Activity.RESULT_OK) {
@@ -751,6 +746,7 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
 
         File image = File.createTempFile(imageFileName, ".jpg", path);
 
+        savePath("file://" + image.getAbsolutePath());
         // Save a file: path for use with ACTION_VIEW intents
         mCurrentPhotoPath = "file:" + image.getAbsolutePath();
 
@@ -769,4 +765,30 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
 
         return map;
     }
+
+    private void savePath(String path) {
+        SharedPreferences sharedPref = getCurrentActivity().getPreferences(Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPref.edit();
+
+        editor.putString("image-crop-picker-path", path);
+        editor.commit();
+    }
+
+    private void clearStoredPath() {
+        savePath(null);
+    }
+
+    @ReactMethod
+    public void getStoredPath(final Promise promise) {
+        try {
+            final Activity activity = getCurrentActivity();
+            SharedPreferences sharedPref = activity.getPreferences(Context.MODE_PRIVATE);
+
+            String path = sharedPref.getString("image-crop-picker-path", null);
+            clearStoredPath();
+            promise.resolve(path);
+        } catch (Exception ex) {
+            promise.reject(ex);
+        }
+    };
 }
